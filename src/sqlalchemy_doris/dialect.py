@@ -18,11 +18,12 @@
 # under the License.
 
 import logging
-from typing import Any, Dict, List, Optional
-from sqlalchemy import Table, log, exc, text
+from pprint import pprint
+from typing import Any, Dict, List, Mapping, Optional
+from sqlalchemy import Column, Dialect, ExecutableDDLElement, Table, log, exc, text
 from sqlalchemy.dialects.mysql.base import MySQLCompiler, MySQLDDLCompiler, MySQLIdentifierPreparer, MySQLDialect
 from sqlalchemy.dialects.mysql import reflection as _reflection
-from sqlalchemy.engine.interfaces import ReflectedTableComment, ReflectedForeignKeyConstraint
+from sqlalchemy.engine.interfaces import ReflectedTableComment, ReflectedForeignKeyConstraint, ReflectedPrimaryKeyConstraint, SchemaTranslateMapType
 from sqlalchemy.engine.default import DefaultDialect
 from sqlalchemy.dialects.mysql.mysqldb import MySQLDialect_mysqldb
 from sqlalchemy.dialects.mysql.pymysql import MySQLDialect_pymysql
@@ -31,7 +32,8 @@ from sqlalchemy.util import topological
 
 from sqlalchemy_doris import datatype
 from sqlalchemy.sql import elements, operators, functions, sqltypes
-from sqlalchemy.schema import CreateTable
+# from sqlalchemy.sql.ddl import CreateTable
+from sqlalchemy.schema import CreateTable, SchemaConst, Identity, Sequence
 
 from sqlalchemy_doris.const import TABLE_KEY_OPTIONS, TABLE_PROPERTIES_SORT_TUPLES
 from abc import ABC, abstractmethod
@@ -98,8 +100,13 @@ class RANDOM(HASH, RenderedMixin):
 
 
 class DorisDDLCompiler(MySQLDDLCompiler):
-    def visit_create_table(self, create, **kw):
-        table = create.element
+    def __init__(self, *args, **kw):
+        super(DorisDDLCompiler, self).__init__(*args, **kw)
+        self.dialect: DorisDialectMixin
+    
+    
+    def visit_create_table(self, create: CreateTable, **kw):
+        table: Table = create.element
         preparer = self.preparer
 
         text = "\nCREATE "
@@ -124,15 +131,15 @@ class DorisDDLCompiler(MySQLDDLCompiler):
         # first_pk = False primary key is not supported
         for create_column in create.columns:
             column = create_column.element
-            assert column.primary_key is False
+            # assert column.primary_key is False
             try:
                 processed = self.process(create_column)
                 if processed is not None:
                     text += separator
                     separator = ", \n"
                     text += "\t" + processed
-                if column.primary_key:
-                    first_pk = True
+                # if column.primary_key:
+                #     first_pk = True
             except exc.CompileError as ce:
                 raise exc.CompileError(
                     "(in table '%s', column '%s'): %s"
@@ -164,6 +171,7 @@ class DorisDDLCompiler(MySQLDDLCompiler):
 
         table_opts = []
         opts = {}
+        pprint(table.primary_key)
         for k, v in table.kwargs.items():
             if k.startswith("%s_" % self.dialect.name):
                 opts[k[len(self.dialect.name) + 1:].upper()] = v
@@ -203,6 +211,75 @@ class DorisDDLCompiler(MySQLDDLCompiler):
 
 
         return "\n".join(table_opts)
+    
+    def visit_create_column(self, create, first_pk=False, **kw):
+        column = create.element
+        if column.system:
+            return None
+        text = self.get_column_specification(column, first_pk=first_pk)
+        const = " ".join(
+            self.process(constraint) for constraint in column.constraints
+        )
+        if const:
+            text += " " + const
+        return text
+    
+    def get_column_specification(self, column: Column, **kw):
+        """Builds column DDL."""
+        if (
+            self.dialect.is_mariadb is True
+            and column.computed is not None
+            and column._user_defined_nullable is SchemaConst.NULL_UNSPECIFIED
+        ):
+            column.nullable = True
+        colspec = [
+            self.preparer.format_column(column),
+            self.dialect.type_compiler_instance.process(
+                column.type, type_expression=column
+            ),
+        ]
+
+        if column.computed is not None:
+            colspec.append(self.process(column.computed))
+
+        is_timestamp = isinstance(
+            column.type._unwrapped_dialect_impl(self.dialect),
+            sqltypes.TIMESTAMP,
+        )
+
+        if not column.nullable:
+            colspec.append("NOT NULL")
+
+        # see: https://docs.sqlalchemy.org/en/latest/dialects/mysql.html#mysql_timestamp_null  # noqa
+        elif column.nullable and is_timestamp:
+            colspec.append("NULL")
+
+        comment = column.comment
+        if comment is not None:
+            literal = self.sql_compiler.render_literal_value(
+                comment, sqltypes.String()
+            )
+            colspec.append("COMMENT " + literal)
+
+        if (
+            column.table is not None
+            and column is column.table._autoincrement_column
+            and (
+                column.server_default is None
+                or isinstance(column.server_default, Identity)
+            )
+            and not (
+                self.dialect.supports_sequences
+                and isinstance(column.default, Sequence)
+                and not column.default.optional
+            )
+        ):
+            colspec.append("AUTO_INCREMENT")
+        else:
+            default = self.get_column_default_string(column)
+            if default is not None:
+                colspec.append("DEFAULT " + default)
+        return " ".join(colspec)
 
 
 @log.class_logger
@@ -221,7 +298,7 @@ class DorisDialectMixin(MySQLDialect, log.Identified):
         self.preparer = MySQLIdentifierPreparer
         self.identifier_preparer: MySQLIdentifierPreparer = self.preparer(self)
 
-    def has_table(self, connection, table_name, schema=None, **kw) -> bool:
+    def has_table(self, connection: Connection, table_name: str, schema=None, **kw) -> bool:
         self._ensure_has_table_connection(connection)
 
         if schema is None:
@@ -277,11 +354,11 @@ class DorisDialectMixin(MySQLDialect, log.Identified):
             raise
 
 
-    def get_schema_names(self, connection, **kw):
+    def get_schema_names(self, connection: Connection, **kw):
         rp = connection.exec_driver_sql("SHOW schemas")
         return [r[0] for r in rp]
 
-    def get_table_names(self, connection, schema: Optional[str]=None, **kw):
+    def get_table_names(self, connection: Connection, schema: Optional[str]=None, **kw):
         """Return a Unicode SHOW TABLES from a given schema."""
         if schema is not None:
             current_schema = schema
