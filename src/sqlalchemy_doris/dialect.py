@@ -146,14 +146,6 @@ class DorisDDLCompiler(MySQLDDLCompiler):
                     % (table.description, column.name, ce.args[0])
                 ) from ce
 
-        # constraint is not supported
-        # const = self.create_table_constraints(
-        #     table,
-        #     _include_foreign_key_constraints=create.include_foreign_key_constraints,  # noqa
-        # )
-        # if const:
-        #     text += separator + "\t" + const
-
         text += "\n)\n%s\n\n" % self.post_create_table(table)
         return text
 
@@ -198,7 +190,7 @@ class DorisDDLCompiler(MySQLDDLCompiler):
                 arg = arg.render()
 
             if opt == 'DISTRIBUTED BY':
-                assert isinstance(arg, HASH) or isinstance(arg, RANDOM)
+                assert isinstance(arg, HASH|RANDOM)
                 arg = arg.render()
 
             if opt == 'PROPERTIES':
@@ -260,20 +252,6 @@ class DorisDDLCompiler(MySQLDDLCompiler):
             )
             colspec.append("COMMENT " + literal)
 
-        # if (
-        #     column.table is not None
-        #     and column is column.table._autoincrement_column
-        #     and (
-        #         column.server_default is None
-        #         or isinstance(column.server_default, Identity)
-        #     )
-        #     and not (
-        #         self.dialect.supports_sequences
-        #         and isinstance(column.default, Sequence)
-        #         and not column.default.optional
-        #     )
-        # ):
-        #     colspec.append("AUTO_INCREMENT")
         else:
             default = self.get_column_default_string(column)
             if default is not None:
@@ -318,16 +296,11 @@ class DorisDialectMixin(MySQLDialect, log.Identified):
         # to detect "False".  See issue #9058
 
         try:
-            # with connection.begin():
-            #     with connection.exec_driver_sql(
-            #         f"DESCRIBE {full_name}",
-            #         execution_options={"skip_user_error_events": True},
-            #     ) as rs:
-            #         return rs.fetchone() is not None
-            q = text(f"DESCRIBE {full_name}")
-            with connection.begin():
-                res = connection.execute(q, execution_options={"skip_user_error_events": True})
-                return res.fetchone() is not None
+            with connection.exec_driver_sql(
+                f"DESCRIBE {full_name}",
+                execution_options={"skip_user_error_events": True},
+            ) as rs:
+                return rs.fetchone() is not None
         except exc.DBAPIError as e:
             # https://dev.mysql.com/doc/mysql-errors/8.0/en/server-error-reference.html  # noqa: E501
             # there are a lot of codes that *may* pop up here at some point
