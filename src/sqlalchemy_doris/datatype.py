@@ -19,7 +19,7 @@
 import logging
 import re
 from typing import Optional, List, Any, Type, Dict
-from sqlalchemy import Numeric, Integer, Float, String
+from sqlalchemy import Numeric, Integer, Float
 from sqlalchemy.sql import sqltypes
 from sqlalchemy.sql.type_api import TypeEngine
 
@@ -55,7 +55,7 @@ class AGG_STATE(Numeric):  # pylint: disable=no-init
 class ARRAY(TypeEngine):  # pylint: disable=no-init
     __visit_name__ = "ARRAY"
 
-    @property
+    @TypeEngine.python_type.getter
     def python_type(self) -> Optional[Type[List[Any]]]:
         return list
 
@@ -63,7 +63,7 @@ class ARRAY(TypeEngine):  # pylint: disable=no-init
 class MAP(TypeEngine):  # pylint: disable=no-init
     __visit_name__ = "MAP"
 
-    @property
+    @TypeEngine.python_type.getter
     def python_type(self) -> Optional[Type[Dict[Any, Any]]]:
         return dict
 
@@ -71,7 +71,7 @@ class MAP(TypeEngine):  # pylint: disable=no-init
 class STRUCT(TypeEngine):  # pylint: disable=no-init
     __visit_name__ = "STRUCT"
 
-    @property
+    @TypeEngine.python_type.getter
     def python_type(self) -> Optional[Type[Any]]:
         return None
 
