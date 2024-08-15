@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import Table, log, exc, text
 from sqlalchemy.dialects.mysql.base import MySQLCompiler, MySQLDDLCompiler, MySQLIdentifierPreparer, MySQLDialect
 from sqlalchemy.dialects.mysql import reflection as _reflection
-from sqlalchemy.engine.interfaces import ReflectedTableComment
+from sqlalchemy.engine.interfaces import ReflectedTableComment, ReflectedForeignKeyConstraint
 from sqlalchemy.engine.default import DefaultDialect
 from sqlalchemy.dialects.mysql.mysqldb import MySQLDialect_mysqldb
 from sqlalchemy.dialects.mysql.pymysql import MySQLDialect_pymysql
@@ -214,10 +214,12 @@ class DorisDialectMixin(MySQLDialect, log.Identified):
 
 
     name = 'doris'
+    preparer = MySQLIdentifierPreparer
 
     def __init__(self, *args, **kw):
         super(DorisDialectMixin, self).__init__(*args, **kw)
-        self.identifier_preparer: MySQLIdentifierPreparer
+        self.preparer = MySQLIdentifierPreparer
+        self.identifier_preparer: MySQLIdentifierPreparer = self.preparer(self)
 
     def has_table(self, connection, table_name, schema=None, **kw) -> bool:
         self._ensure_has_table_connection(connection)
@@ -267,6 +269,8 @@ class DorisDialectMixin(MySQLDialect, log.Identified):
             # less clear if mysql 8 would suddenly start using one of those
             # print('caught exception', e)
             if self._extract_error_code(e.orig) in (1105, 1051):
+                if e.orig is None:
+                    return False
                 info: str = e.orig.args[1].split('detailMessage = ')[-1]
                 if info.startswith('Unknown table'):
                     return False
@@ -300,6 +304,7 @@ class DorisDialectMixin(MySQLDialect, log.Identified):
     def get_view_names(self, connection, schema: Optional[str]=None, **kw):
         if schema is None:
             schema = self.default_schema_name
+        assert schema, 'Failed to get schema name'
         charset = self._connection_charset
         rp = connection.exec_driver_sql(
             "SHOW FULL TABLES FROM %s"
@@ -352,7 +357,7 @@ class DorisDialectMixin(MySQLDialect, log.Identified):
 
     def get_foreign_keys(
             self, connection: Connection, table_name: str, schema: Optional[str] = None, **kw
-    ) -> List[Dict[str, Any]]:
+    ) -> List[ReflectedForeignKeyConstraint]:
         return []
 
     def get_primary_keys(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kw) -> List[str]:
@@ -381,12 +386,12 @@ class DorisDialectMixin(MySQLDialect, log.Identified):
         return ReflectedTableComment(text=None)
 
 
-class DorisDialect_pymysql(DorisDialectMixin, MySQLDialect_pymysql):
+class DorisDialect_pymysql(DorisDialectMixin, MySQLDialect_pymysql): # type: ignore
     supports_statement_cache = False
     ddl_compiler = DorisDDLCompiler
 
 
-class DorisDialect_mysqldb(DorisDialectMixin, MySQLDialect_mysqldb):
+class DorisDialect_mysqldb(DorisDialectMixin, MySQLDialect_mysqldb): # type: ignore
     supports_statement_cache = False
     ddl_compiler = DorisDDLCompiler
 
