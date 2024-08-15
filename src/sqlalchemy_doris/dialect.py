@@ -238,11 +238,16 @@ class DorisDialectMixin(DefaultDialect, log.Identified):
         # to detect "False".  See issue #9058
 
         try:
-            with connection.exec_driver_sql(
-                f"DESCRIBE {full_name}",
-                execution_options={"skip_user_error_events": True},
-            ) as rs:
-                return rs.fetchone() is not None
+            # with connection.begin():
+            #     with connection.exec_driver_sql(
+            #         f"DESCRIBE {full_name}",
+            #         execution_options={"skip_user_error_events": True},
+            #     ) as rs:
+            #         return rs.fetchone() is not None
+            q = text(f"DESCRIBE {full_name}")
+            with connection.begin():
+                res = connection.execute(q, execution_options={"skip_user_error_events": True})
+                return res.fetchone() is not None
         except exc.DBAPIError as e:
             # https://dev.mysql.com/doc/mysql-errors/8.0/en/server-error-reference.html  # noqa: E501
             # there are a lot of codes that *may* pop up here at some point
