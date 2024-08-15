@@ -5,27 +5,26 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sqlalchemy-doris"
 authors = [
-    {name = "actcwlf", email = "actcwlf@qq.com"},
+    {name = "vtsiura", email = "morfey.rulit@gmail.com"},
 ]
 description = "Apache Doris dialect for SQLAlchemy"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.10.12"
 keywords = ["Apache Doris", "SQLAlchemy"]
 license = {text = "Apache Software License"}
 classifiers = [
-#    "Framework :: Django",
     "Development Status :: 2 - Pre-Alpha",
     "Programming Language :: Python :: 3",
 ]
 dynamic = ["version"]
 dependencies = [
-    "sqlalchemy>=1.4",
+    "sqlalchemy>=2.0",
     "sqlalchemy-utils>=0.38.3"
 ]
 
 [project.urls]
-Homepage = "https://github.com/actcwlf/sqlalchemy-doris"
-Issues = "https://github.com/actcwlf/sqlalchemy-doris/issues"
+Homepage = "https://github.com/VasilevsVV/doris-alchemy"
+Issues = "https://github.com/VasilevsVV/doris-alchemy/issues"
 
 [project.optional-dependencies]
 mysqldb = ["mysqlclient>=2.1.0"]
