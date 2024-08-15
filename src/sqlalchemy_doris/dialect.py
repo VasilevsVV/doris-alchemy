@@ -19,7 +19,7 @@
 
 import logging
 from typing import Any, Dict, List
-from sqlalchemy import log, exc, text
+from sqlalchemy import Table, log, exc, text
 from sqlalchemy.dialects.mysql.base import MySQLCompiler, MySQLDDLCompiler
 from sqlalchemy.dialects.mysql import reflection as _reflection
 from sqlalchemy.engine.default import DefaultDialect
@@ -31,6 +31,9 @@ from sqlalchemy.util import topological
 from sqlalchemy_doris import datatype
 from sqlalchemy.sql import elements, operators, functions, sqltypes
 from sqlalchemy.schema import CreateTable
+
+from sqlalchemy_doris.const import TABLE_KEY_OPTIONS, TABLE_PROPERTIES_SORT_TUPLES
+from abc import ABC, abstractmethod
 
 
 logger = logging.getLogger(__name__)
@@ -51,23 +54,29 @@ def format_properties(**kwargs):
     return '(\n    ' + result_str[:-1] + '\n)'
 
 
-class HASH:
-    def __init__(self, *keys: [str], buckets='auto'):
+class RenderedMixin(ABC):
+    @abstractmethod
+    def render(self) -> str:
+        pass
+    
+
+class HASH(RenderedMixin):
+    def __init__(self, *keys: str, buckets='auto'):
         self.keys = keys
         self.buckets = buckets
 
-    def render(self):
+    def render(self) -> str:
         keys_str = 'HASH' + join_args_with_quote(*self.keys)
         buckets_str = f'BUCKETS {self.buckets}'
         return keys_str + ' ' + buckets_str
 
 
-class RANGE:
-    def __init__(self, *keys: [str], part_info=tuple()):
+class RANGE(RenderedMixin):
+    def __init__(self, *keys: str, part_info=tuple()):
         self.keys = keys
         self.part_info = part_info
 
-    def render(self):
+    def render(self) -> str:
         keys_str = 'RANGE' + join_args_with_quote(*self.keys)
         if len(self.part_info) > 0:
             part_str = ',\n    '.join(self.part_info)
@@ -77,8 +86,11 @@ class RANGE:
         return keys_str + ' ' + part_str
 
 
-class RANDOM(HASH):
-    def render(self):
+class RANDOM(HASH, RenderedMixin):
+    def __init__(self, *keys: str, buckets='auto'):
+        super().__init__(*keys, buckets=buckets)
+
+    def render(self) -> str:
         keys_str = 'RANDOM' + join_args_with_quote(*self.keys)
         buckets_str = f'BUCKETS {self.buckets}'
         return keys_str + ' ' + buckets_str
@@ -139,50 +151,25 @@ class DorisDDLCompiler(MySQLDDLCompiler):
 
 
 
-    def post_create_table(self, table):
-        """Build table-level CREATE options like ENGINE and COLLATE."""
+    def post_create_table(self, table: Table):
+        """Builds top level CREATE TABLE options, like ENGINE and COLLATE.
+
+        Args:
+            table (Table): sqlalchemy.Table
+
+        Returns:
+            sqlalchemy.LiteralString: String literal containing CREATE TABLE query options.
+        """
 
         table_opts = []
-
-        # opts = {
-        #     k[len(self.dialect.name) + 1 :].upper(): v
-        #     for k, v in table.kwargs.items()
-        #     if k.startswith("%s_" % self.dialect.name)
-        # }
-
         opts = {}
         for k, v in table.kwargs.items():
             if k.startswith("%s_" % self.dialect.name):
                 opts[k[len(self.dialect.name) + 1:].upper()] = v
-
         if table.comment is not None:
             opts["COMMENT"] = table.comment
-
-        # partition_options = [
-        #     # "PARTITION_BY",
-        #     # "PARTITIONS",
-        #     # "SUBPARTITIONS",
-        #     # "SUBPARTITION_BY",
-        #     "DISTRIBUTED_BY"
-        # ]
-        #
-        # nonpart_options = set(opts).difference(partition_options)
-        # part_options = set(opts).intersection(partition_options)
-
-
-        for opt in topological.sort(
-            [
-                ("UNIQUE_KEY", "PARTITION_BY"),
-                ("AGGREGATE_KEY", "PARTITION_BY"),
-                ("DUPLICATE_KEY", "PARTITION_BY"),
-                ("UNIQUE_KEY",    "DISTRIBUTED_BY"),
-                ("AGGREGATE_KEY", "DISTRIBUTED_BY"),
-                ("DUPLICATE_KEY", "DISTRIBUTED_BY"),
-                ("PARTITION_BY", "DISTRIBUTED_BY"),
-                ("DISTRIBUTED_BY", "PROPERTIES")
-            ],
-            opts,
-        ):
+        sorted_opts = topological.sort(TABLE_PROPERTIES_SORT_TUPLES, opts)
+        for opt in sorted_opts:
             arg = opts[opt]
             if opt in _reflection._options_of_type_string:
                 arg = self.sql_compiler.render_literal_value(
@@ -191,11 +178,7 @@ class DorisDDLCompiler(MySQLDDLCompiler):
 
             opt = opt.replace("_", " ")
 
-            if opt in (
-                "UNIQUE KEY",
-                "AGGREGATE KEY",
-                "DUPLICATE KEY",
-            ):
+            if opt in TABLE_KEY_OPTIONS:
                 if isinstance(arg, str):
                     arg = join_args_with_quote(arg)
                 else:
@@ -203,6 +186,7 @@ class DorisDDLCompiler(MySQLDDLCompiler):
                     arg = join_args_with_quote(*arg)
 
             if opt == "PARTITION BY":
+                assert isinstance(arg, RenderedMixin)
                 arg = arg.render()
 
             if opt == 'DISTRIBUTED BY':
@@ -210,6 +194,7 @@ class DorisDDLCompiler(MySQLDDLCompiler):
                 arg = arg.render()
 
             if opt == 'PROPERTIES':
+                assert isinstance(arg, dict)
                 arg = format_properties(**arg)
 
             joiner = " "
@@ -220,7 +205,7 @@ class DorisDDLCompiler(MySQLDDLCompiler):
 
 
 @log.class_logger
-class DorisDialectMixin(DefaultDialect):
+class DorisDialectMixin(DefaultDialect, log.Identified):
     # Caching
     # Warnings are generated by SQLAlchmey if this flag is not explicitly set
     # and tests are needed before being enabled
