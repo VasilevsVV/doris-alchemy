@@ -171,7 +171,6 @@ class DorisDDLCompiler(MySQLDDLCompiler):
 
         table_opts = []
         opts = {}
-        pprint(table.primary_key)
         for k, v in table.kwargs.items():
             if k.startswith("%s_" % self.dialect.name):
                 opts[k[len(self.dialect.name) + 1:].upper()] = v
@@ -261,20 +260,20 @@ class DorisDDLCompiler(MySQLDDLCompiler):
             )
             colspec.append("COMMENT " + literal)
 
-        if (
-            column.table is not None
-            and column is column.table._autoincrement_column
-            and (
-                column.server_default is None
-                or isinstance(column.server_default, Identity)
-            )
-            and not (
-                self.dialect.supports_sequences
-                and isinstance(column.default, Sequence)
-                and not column.default.optional
-            )
-        ):
-            colspec.append("AUTO_INCREMENT")
+        # if (
+        #     column.table is not None
+        #     and column is column.table._autoincrement_column
+        #     and (
+        #         column.server_default is None
+        #         or isinstance(column.server_default, Identity)
+        #     )
+        #     and not (
+        #         self.dialect.supports_sequences
+        #         and isinstance(column.default, Sequence)
+        #         and not column.default.optional
+        #     )
+        # ):
+        #     colspec.append("AUTO_INCREMENT")
         else:
             default = self.get_column_default_string(column)
             if default is not None:
