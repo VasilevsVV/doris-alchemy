@@ -18,22 +18,20 @@
 # under the License.
 
 import logging
-from pprint import pprint
-from typing import Any, Dict, List, Mapping, Optional
-from sqlalchemy import Column, Dialect, ExecutableDDLElement, Table, log, exc, text
-from sqlalchemy.dialects.mysql.base import MySQLCompiler, MySQLDDLCompiler, MySQLIdentifierPreparer, MySQLDialect
+from typing import Any, Dict, List, Optional
+from sqlalchemy import Column, Table, log, exc, text
+from sqlalchemy.dialects.mysql.base import MySQLDDLCompiler, MySQLIdentifierPreparer, MySQLDialect
 from sqlalchemy.dialects.mysql import reflection as _reflection
-from sqlalchemy.engine.interfaces import ReflectedTableComment, ReflectedForeignKeyConstraint, ReflectedPrimaryKeyConstraint, SchemaTranslateMapType
-from sqlalchemy.engine.default import DefaultDialect
+from sqlalchemy.engine.interfaces import ReflectedTableComment, ReflectedForeignKeyConstraint
 from sqlalchemy.dialects.mysql.mysqldb import MySQLDialect_mysqldb
 from sqlalchemy.dialects.mysql.pymysql import MySQLDialect_pymysql
 from sqlalchemy.engine import Connection
 from sqlalchemy.util import topological
 
 from doris_alchemy import datatype
-from sqlalchemy.sql import elements, operators, functions, sqltypes
+from sqlalchemy.sql import sqltypes
 # from sqlalchemy.sql.ddl import CreateTable
-from sqlalchemy.schema import CreateTable, SchemaConst, Identity, Sequence
+from sqlalchemy.schema import CreateTable, SchemaConst
 
 from doris_alchemy.const import TABLE_KEY_OPTIONS, TABLE_PROPERTIES_SORT_TUPLES
 from abc import ABC, abstractmethod
