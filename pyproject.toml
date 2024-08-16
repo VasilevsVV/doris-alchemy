@@ -25,9 +25,8 @@ classifiers = [
 ]
 
 dependencies = [
-    "sqlalchemy>=2.0",
-    "sqlalchemy-utils>=0.38.3"
-]
+    "sqlalchemy>=2.0"
+    ]
 
 [project.urls]
 Homepage = "https://github.com/VasilevsVV/doris-alchemy"
