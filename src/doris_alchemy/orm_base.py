@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional, Tuple
 from sqlalchemy import Engine, MetaData, String, Table, Text
 from sqlalchemy.orm import DeclarativeBase
-from doris_alchemy.dialect import HASH, RANDOM
+from doris_alchemy.dialect import HASH, RANDOM, RANGE
 
 
 METADATA = MetaData()
@@ -16,6 +16,7 @@ class DorisBase(DeclarativeBase):
         }
     
     doris_distributed_by: HASH|RANDOM
+    doris_partition_by: HASH|RANDOM|RANGE
     doris_properties: dict
     
     type_annotation_map = {
@@ -42,6 +43,10 @@ class DorisBase(DeclarativeBase):
             'You must define distributed_by for orm model. Via doris_distributed_by attribute, or __table_args__'
         if hasattr(cls, 'doris_distributed_by'):
             cls.__table_args__['doris_distributed_by'] = getattr(cls, 'doris_distributed_by')
+        if hasattr(cls, 'doris_partition_by'):
+            cls.__table_args__['doris_partition_by'] = getattr(cls, 'doris_partition_by')
+        if hasattr(cls, 'doris_unique_key'):
+            cls.__table_args__['doris_unique_key'] = getattr(cls, 'doris_unique_key')
         super().__init_subclass__()
 
 
