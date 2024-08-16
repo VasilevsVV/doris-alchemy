@@ -48,13 +48,16 @@ class DorisBase(DeclarativeBase):
         if hasattr(cls, 'doris_unique_key'):
             cls.__table_args__['doris_unique_key'] = getattr(cls, 'doris_unique_key')
         super().__init_subclass__()
-
-
-    def __repr__(self) -> str:
+    
+    
+    def to_dict(self) -> dict[str, Any]:
         d = self.__dict__
         if '_sa_instance_state' in d:
             d.pop('_sa_instance_state')
-        return f'{self.__class__.__name__}({d})'
+        return d
+
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}{self.to_dict()}'
     
     @classmethod
     def get_table(cls) -> Optional[Table]:
