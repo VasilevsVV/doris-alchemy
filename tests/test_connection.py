@@ -1,7 +1,7 @@
 import os
 
 from sqlalchemy import create_engine
-from sqlalchemy_doris import registry
+from doris_alchemy import registry
 
 
 def test_connect():

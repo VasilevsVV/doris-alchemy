@@ -30,12 +30,12 @@ from sqlalchemy.dialects.mysql.pymysql import MySQLDialect_pymysql
 from sqlalchemy.engine import Connection
 from sqlalchemy.util import topological
 
-from sqlalchemy_doris import datatype
+from doris_alchemy import datatype
 from sqlalchemy.sql import elements, operators, functions, sqltypes
 # from sqlalchemy.sql.ddl import CreateTable
 from sqlalchemy.schema import CreateTable, SchemaConst, Identity, Sequence
 
-from sqlalchemy_doris.const import TABLE_KEY_OPTIONS, TABLE_PROPERTIES_SORT_TUPLES
+from doris_alchemy.const import TABLE_KEY_OPTIONS, TABLE_PROPERTIES_SORT_TUPLES
 from abc import ABC, abstractmethod
 
 
