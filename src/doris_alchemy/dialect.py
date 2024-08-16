@@ -18,7 +18,7 @@
 # under the License.
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 from sqlalchemy import Column, Table, log, exc, text
 from sqlalchemy.dialects.mysql.base import MySQLDDLCompiler, MySQLIdentifierPreparer, MySQLDialect
 from sqlalchemy.dialects.mysql import reflection as _reflection
@@ -54,6 +54,13 @@ def format_properties(**kwargs):
     result_str = '\n    '.join(entries)
     return '(\n    ' + result_str[:-1] + '\n)'
 
+def ensure_sequence(value: Any) -> Sequence:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list|tuple):
+        return value
+    return [value]
+
 
 class RenderedMixin(ABC):
     @abstractmethod
@@ -62,9 +69,9 @@ class RenderedMixin(ABC):
     
 
 class HASH(RenderedMixin):
-    def __init__(self, *keys: str, buckets='auto'):
-        self.keys = keys
-        self.buckets = buckets
+    def __init__(self, keys: Sequence[str]|str, buckets: Optional[int] = None):
+        self.keys: Iterable[str] = ensure_sequence(keys)
+        self.buckets = buckets or 'auto'
 
     def render(self) -> str:
         keys_str = 'HASH' + join_args_with_quote(*self.keys)
@@ -73,28 +80,28 @@ class HASH(RenderedMixin):
 
 
 class RANGE(RenderedMixin):
-    def __init__(self, *keys: str, part_info=tuple()):
-        self.keys = keys
-        self.part_info = part_info
+    def __init__(self, keys: Sequence[str]|str, part_info: Sequence = tuple()):
+        self.keys: Iterable[str] = ensure_sequence(keys)
+        self.part_info = ensure_sequence(part_info)
 
     def render(self) -> str:
         keys_str = 'RANGE' + join_args_with_quote(*self.keys)
         if len(self.part_info) > 0:
-            part_str = ',\n    '.join(self.part_info)
+            part_str = ',\n    '.join([str(val) for val in self.part_info])
             part_str = '(\n    ' + part_str + '\n)'
         else:
             part_str = '()'
         return keys_str + ' ' + part_str
 
 
-class RANDOM(HASH, RenderedMixin):
-    def __init__(self, *keys: str, buckets='auto'):
-        super().__init__(*keys, buckets=buckets)
+class RANDOM(RenderedMixin):
+    def __init__(self, buckets: Optional[int]=None):
+        self.buckets = buckets or 'auto'
 
     def render(self) -> str:
-        keys_str = 'RANDOM' + join_args_with_quote(*self.keys)
-        buckets_str = f'BUCKETS {self.buckets}'
-        return keys_str + ' ' + buckets_str
+        keys_str = 'RANDOM'
+        keys_str += f' BUCKETS {self.buckets}'
+        return keys_str
 
 
 class DorisDDLCompiler(MySQLDDLCompiler):
