@@ -4,8 +4,8 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy import create_engine
 
-from sqlalchemy_doris import datatype
-from sqlalchemy_doris import HASH, RANGE
+from doris_alchemy import datatype
+from doris_alchemy import HASH, RANGE
 
 
 @pytest.fixture
