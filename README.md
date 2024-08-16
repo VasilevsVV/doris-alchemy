@@ -10,14 +10,14 @@ This is an unofficial implementation forked from [pydoris](https://pypi.org/proj
 ## Installation
 Use
 ```bash
-pip install sqlalchemy-doris[pymysql]
+pip install doris-alchemy[pymysql]
 ```
 for pymysql.
 
 Or
 
 ```bash
-pip install sqlalchemy-doris[mysqldb]
+pip install doris-alchemy[mysqldb]
 ```
 for mysqlclient.
 
