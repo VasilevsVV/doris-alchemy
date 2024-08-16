@@ -18,9 +18,9 @@
 # under the License.
 from sqlalchemy.dialects import registry
 
-from doris_alchemy._version import __version__
 from doris_alchemy.dialect import RANGE, RANDOM, HASH
+from doris_alchemy.orm_base import DorisBase
 
-registry.register("doris", "sqlalchemy_doris.dialect", "DorisDialect")
-registry.register("doris.pymysql", "sqlalchemy_doris.dialect", "DorisDialect_pymysql")
-registry.register("doris.mysqldb", "sqlalchemy_doris.dialect", "DorisDialect_mysqldb")
+registry.register("doris", "doris_alchemy.dialect", "DorisDialect")
+registry.register("doris.pymysql", "doris_alchemy.dialect", "DorisDialect_pymysql")
+registry.register("doris.mysqldb", "doris_alchemy.dialect", "DorisDialect_mysqldb")
