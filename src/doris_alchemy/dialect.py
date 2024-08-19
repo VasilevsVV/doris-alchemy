@@ -42,24 +42,6 @@ from doris_alchemy.util import format_properties, join_args_with_quote
 logger = logging.getLogger(__name__)
 
 
-def process_table_arg(option: str, arg: Any) -> str:
-    if option in TABLE_KEY_OPTIONS:
-        if isinstance(arg, str):
-            return '{} {}'.format(option, join_args_with_quote(arg))
-        else:
-            assert isinstance(arg, tuple)
-            return '{} {}'.format(option, join_args_with_quote(*arg))
-    if option in ['PARTITION BY', 'DISTRIBUTED BY']:
-        assert isinstance(arg, RenderedMixin)
-        return '{} {}'.format(option, arg.render())
-    if option == 'PROPERTIES':
-        assert isinstance(arg, dict)
-        return '{} {}'.format(option, format_properties(**arg))
-    if option == 'ENGINE':
-        assert isinstance(arg, str)
-        return f'{option} {arg}'
-
-
 class DorisDDLCompiler(MySQLDDLCompiler):
     def __init__(self, *args, **kw):
         super(DorisDDLCompiler, self).__init__(*args, **kw)
@@ -112,15 +94,32 @@ class DorisDDLCompiler(MySQLDDLCompiler):
 
 
 
+    def __compile_table_arg(self, option: str, arg: Any, table_name: str) -> str:
+        option = option.replace("_", " ")
+        # if option in _reflection._options_of_type_string:
+        if option == 'COMMENT':
+            arg = self.sql_compiler.render_literal_value(arg, sqltypes.String())
+            return f'{option} {arg}'
+        if option in TABLE_KEY_OPTIONS:
+            if isinstance(arg, str):
+                return '{} {}'.format(option, join_args_with_quote(arg))
+            else:
+                assert isinstance(arg, tuple)
+                return '{} {}'.format(option, join_args_with_quote(*arg))
+        if option in ['PARTITION BY', 'DISTRIBUTED BY']:
+            assert isinstance(arg, RenderedMixin)
+            return '{} {}'.format(option, arg.render())
+        if option == 'PROPERTIES':
+            assert isinstance(arg, dict)
+            return '{} {}'.format(option, format_properties(**arg))
+        if option == 'ENGINE':
+            assert isinstance(arg, str)
+            return f'{option} {arg}'
+        raise Exception(f'Invalid table argument {option} for table {table_name}')
+
+
     def post_create_table(self, table: Table):
-        """Builds top level CREATE TABLE options, like ENGINE and COLLATE.
-
-        Args:
-            table (Table): sqlalchemy.Table
-
-        Returns:
-            sqlalchemy.LiteralString: String literal containing CREATE TABLE query options.
-        """
+        "Builds top level CREATE TABLE options, like ENGINE and COLLATE."
 
         table_opts = []
         opts = {}
@@ -131,37 +130,9 @@ class DorisDDLCompiler(MySQLDDLCompiler):
             opts["COMMENT"] = table.comment
         sorted_opts = topological.sort(TABLE_PROPERTIES_SORT_TUPLES, opts)
         for opt in sorted_opts:
-            arg = opts[opt]
-            if opt in _reflection._options_of_type_string:
-                arg = self.sql_compiler.render_literal_value(
-                    arg, sqltypes.String()
-                )
-
-            opt = opt.replace("_", " ")
-
-            if opt in TABLE_KEY_OPTIONS:
-                if isinstance(arg, str):
-                    arg = join_args_with_quote(arg)
-                else:
-                    assert isinstance(arg, tuple)
-                    arg = join_args_with_quote(*arg)
-
-            if opt == "PARTITION BY":
-                assert isinstance(arg, RenderedMixin)
-                arg = arg.render()
-
-            if opt == 'DISTRIBUTED BY':
-                assert isinstance(arg, HASH|RANDOM)
-                arg = arg.render()
-
-            if opt == 'PROPERTIES':
-                assert isinstance(arg, dict)
-                arg = format_properties(**arg)
-
-            joiner = " "
-            table_opts.append(joiner.join((opt, arg)))
-
-
+            __arg = opts[opt]
+            __compiled = self.__compile_table_arg(opt, __arg, table.name)
+            table_opts.append(__compiled)
         return "\n".join(table_opts)
     
     def visit_create_column(self, create, first_pk=False, **kw):
