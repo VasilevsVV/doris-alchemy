@@ -18,7 +18,7 @@
 # under the License.
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 from sqlalchemy import Column, Table, log, exc, text
 from sqlalchemy.dialects.mysql.base import MySQLDDLCompiler, MySQLIdentifierPreparer, MySQLDialect
 from sqlalchemy.dialects.mysql import reflection as _reflection
@@ -94,7 +94,7 @@ class DorisDDLCompiler(MySQLDDLCompiler):
 
 
 
-    def __compile_table_arg(self, option: str, arg: Any, table_name: str) -> str:
+    def __compile_table_arg(self, option: str, arg: Any, table_name: str) -> Optional[str]:
         option = option.replace("_", " ")
         # if option in _reflection._options_of_type_string:
         if option == 'COMMENT':
@@ -104,7 +104,7 @@ class DorisDDLCompiler(MySQLDDLCompiler):
             if isinstance(arg, str):
                 return '{} {}'.format(option, join_args_with_quote(arg))
             else:
-                assert isinstance(arg, tuple)
+                assert isinstance(arg, Sequence)
                 return '{} {}'.format(option, join_args_with_quote(*arg))
         if option in ['PARTITION BY', 'DISTRIBUTED BY']:
             assert isinstance(arg, RenderedMixin)
@@ -115,7 +115,7 @@ class DorisDDLCompiler(MySQLDDLCompiler):
         if option == 'ENGINE':
             assert isinstance(arg, str)
             return f'{option} {arg}'
-        raise Exception(f'Invalid table argument {option} for table {table_name}')
+        return None
 
 
     def post_create_table(self, table: Table):
@@ -128,11 +128,21 @@ class DorisDDLCompiler(MySQLDDLCompiler):
                 opts[k[len(self.dialect.name) + 1:].upper()] = v
         if table.comment is not None:
             opts["COMMENT"] = table.comment
+        pk = table.primary_key
+        if opts.get('AUTOGEN_PRIMARY_KEY', False) and len(pk) > 0:
+            pk_key = tuple(c.name for c in pk)
+            if 'UNIQUE_KEY' not in opts:
+                opts['UNIQUE_KEY'] = pk_key
+            if 'DISTRIBUTED_BY' not in opts:
+                opts['DISTRIBUTED_BY'] = HASH(pk_key)
+                
+            
         sorted_opts = topological.sort(TABLE_PROPERTIES_SORT_TUPLES, opts)
         for opt in sorted_opts:
             __arg = opts[opt]
             __compiled = self.__compile_table_arg(opt, __arg, table.name)
-            table_opts.append(__compiled)
+            if __compiled:
+                table_opts.append(__compiled)
         return "\n".join(table_opts)
     
     def visit_create_column(self, create, first_pk=False, **kw):

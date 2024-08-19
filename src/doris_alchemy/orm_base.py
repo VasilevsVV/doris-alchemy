@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Sequence, Tuple
 from sqlalchemy import Engine, MetaData, String, Table, Text
 from sqlalchemy.orm import DeclarativeBase
 from doris_alchemy.datatype import HASH, RANGE
@@ -19,6 +19,10 @@ class DorisBase(DeclarativeBase):
     doris_distributed_by: HASH|RANDOM
     doris_partition_by: HASH|RANDOM|RANGE
     doris_properties: dict
+    doris_autogen_primary_key: bool
+    doris_unique_key: str|Sequence[str]
+    doris_duplicate_key: str|Sequence[str]
+    doris_aggregate_key: str|Sequence[str]
     
     type_annotation_map = {
         str: String().with_variant(Text, 'doris')
@@ -40,14 +44,17 @@ class DorisBase(DeclarativeBase):
             cls.__table_args__ = {}
         super_table_args = cls.__base_table_args()
         cls.__table_args__.update(super_table_args)
-        assert hasattr(cls, 'doris_distributed_by') or 'doris_distributed_by' in cls.__table_args__,\
-            'You must define distributed_by for orm model. Via doris_distributed_by attribute, or __table_args__'
+        # assert hasattr(cls, 'doris_distributed_by') or 'doris_distributed_by' in cls.__table_args__,\
+        #     'You must define distributed_by for orm model. Via doris_distributed_by attribute, or __table_args__'
         if hasattr(cls, 'doris_distributed_by'):
             cls.__table_args__['doris_distributed_by'] = getattr(cls, 'doris_distributed_by')
         if hasattr(cls, 'doris_partition_by'):
             cls.__table_args__['doris_partition_by'] = getattr(cls, 'doris_partition_by')
         if hasattr(cls, 'doris_unique_key'):
             cls.__table_args__['doris_unique_key'] = getattr(cls, 'doris_unique_key')
+        if hasattr(cls, 'doris_autogen_primary_key') and cls.doris_autogen_primary_key:
+            cls.__table_args__['doris_autogen_primary_key'] = True
+            
         super().__init_subclass__()
     
     
