@@ -11,7 +11,7 @@ maintainers = [
     {name = "vtsiura", email = "morfey.rulit@gmail.com"}
 ]
 
-version = "0.2.0"
+version = "0.2.1"
 
 description = "Apache Doris dialect for SQLAlchemy"
 readme = "README.md"
