@@ -18,7 +18,7 @@
 # under the License.
 from sqlalchemy.dialects import registry
 
-from doris_alchemy.dialect import RANGE, RANDOM, HASH
+from doris_alchemy.datatype import HASH, RANGE, RANDOM
 from doris_alchemy.orm_base import DorisBase
 
 registry.register("doris", "doris_alchemy.dialect", "DorisDialect")

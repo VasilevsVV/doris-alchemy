@@ -16,12 +16,16 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from abc import ABC, abstractmethod
 import logging
 import re
-from typing import Optional, List, Any, Type, Dict
+from typing import Iterable, Optional, List, Any, Sequence, Type, Dict
 from sqlalchemy import Numeric, Integer, Float
 from sqlalchemy.sql import sqltypes
 from sqlalchemy.sql.type_api import TypeEngine
+
+from doris_alchemy.util import ensure_sequence
+from doris_alchemy.util import join_args_with_quote
 
 logger = logging.getLogger(__name__)
 
@@ -127,3 +131,45 @@ def parse_sqltype(type_str: str) -> TypeEngine:
         return sqltypes.NULLTYPE
     type_class = _type_map[type_name]
     return type_class()
+
+
+class RenderedMixin(ABC):
+    @abstractmethod
+    def render(self) -> str:
+        pass
+
+
+class HASH(RenderedMixin):
+    def __init__(self, keys: Sequence[str]|str, buckets: Optional[int] = None):
+        self.keys: Iterable[str] = ensure_sequence(keys)
+        self.buckets = buckets or 'auto'
+
+    def render(self) -> str:
+        keys_str = 'HASH' + join_args_with_quote(*self.keys)
+        buckets_str = f'BUCKETS {self.buckets}'
+        return keys_str + ' ' + buckets_str
+
+
+class RANGE(RenderedMixin):
+    def __init__(self, keys: Sequence[str]|str, part_info: Sequence = tuple()):
+        self.keys: Iterable[str] = ensure_sequence(keys)
+        self.part_info = ensure_sequence(part_info)
+
+    def render(self) -> str:
+        keys_str = 'RANGE' + join_args_with_quote(*self.keys)
+        if len(self.part_info) > 0:
+            part_str = ',\n    '.join([str(val) for val in self.part_info])
+            part_str = '(\n    ' + part_str + '\n)'
+        else:
+            part_str = '()'
+        return keys_str + ' ' + part_str
+
+
+class RANDOM(RenderedMixin):
+    def __init__(self, buckets: Optional[int]=None):
+        self.buckets = buckets or 'auto'
+
+    def render(self) -> str:
+        keys_str = 'RANDOM'
+        keys_str += f' BUCKETS {self.buckets}'
+        return keys_str

@@ -18,7 +18,7 @@
 # under the License.
 
 import logging
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 from sqlalchemy import Column, Table, log, exc, text
 from sqlalchemy.dialects.mysql.base import MySQLDDLCompiler, MySQLIdentifierPreparer, MySQLDialect
 from sqlalchemy.dialects.mysql import reflection as _reflection
@@ -34,74 +34,30 @@ from sqlalchemy.sql import sqltypes
 from sqlalchemy.schema import CreateTable, SchemaConst
 
 from doris_alchemy.const import TABLE_KEY_OPTIONS, TABLE_PROPERTIES_SORT_TUPLES
-from abc import ABC, abstractmethod
+
+from doris_alchemy.datatype import HASH, RANDOM, RenderedMixin
+from doris_alchemy.util import format_properties, join_args_with_quote
 
 
 logger = logging.getLogger(__name__)
 
 
-def join_args_with_quote(*args):
-    args = [f'`{a}`' for a in args]
-    args_str = ', '.join(args)
-    return '(' + args_str + ')'
-
-
-def format_properties(**kwargs):
-    entries = []
-    for k, v in kwargs.items():
-        entry = f'"{k}" = "{v}",'
-        entries.append(entry)
-    result_str = '\n    '.join(entries)
-    return '(\n    ' + result_str[:-1] + '\n)'
-
-def ensure_sequence(value: Any) -> Sequence:
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, list|tuple):
-        return value
-    return [value]
-
-
-class RenderedMixin(ABC):
-    @abstractmethod
-    def render(self) -> str:
-        pass
-    
-
-class HASH(RenderedMixin):
-    def __init__(self, keys: Sequence[str]|str, buckets: Optional[int] = None):
-        self.keys: Iterable[str] = ensure_sequence(keys)
-        self.buckets = buckets or 'auto'
-
-    def render(self) -> str:
-        keys_str = 'HASH' + join_args_with_quote(*self.keys)
-        buckets_str = f'BUCKETS {self.buckets}'
-        return keys_str + ' ' + buckets_str
-
-
-class RANGE(RenderedMixin):
-    def __init__(self, keys: Sequence[str]|str, part_info: Sequence = tuple()):
-        self.keys: Iterable[str] = ensure_sequence(keys)
-        self.part_info = ensure_sequence(part_info)
-
-    def render(self) -> str:
-        keys_str = 'RANGE' + join_args_with_quote(*self.keys)
-        if len(self.part_info) > 0:
-            part_str = ',\n    '.join([str(val) for val in self.part_info])
-            part_str = '(\n    ' + part_str + '\n)'
+def process_table_arg(option: str, arg: Any) -> str:
+    if option in TABLE_KEY_OPTIONS:
+        if isinstance(arg, str):
+            return '{} {}'.format(option, join_args_with_quote(arg))
         else:
-            part_str = '()'
-        return keys_str + ' ' + part_str
-
-
-class RANDOM(RenderedMixin):
-    def __init__(self, buckets: Optional[int]=None):
-        self.buckets = buckets or 'auto'
-
-    def render(self) -> str:
-        keys_str = 'RANDOM'
-        keys_str += f' BUCKETS {self.buckets}'
-        return keys_str
+            assert isinstance(arg, tuple)
+            return '{} {}'.format(option, join_args_with_quote(*arg))
+    if option in ['PARTITION BY', 'DISTRIBUTED BY']:
+        assert isinstance(arg, RenderedMixin)
+        return '{} {}'.format(option, arg.render())
+    if option == 'PROPERTIES':
+        assert isinstance(arg, dict)
+        return '{} {}'.format(option, format_properties(**arg))
+    if option == 'ENGINE':
+        assert isinstance(arg, str)
+        return f'{option} {arg}'
 
 
 class DorisDDLCompiler(MySQLDDLCompiler):

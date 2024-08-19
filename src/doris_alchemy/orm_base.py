@@ -1,7 +1,8 @@
 from typing import Any, Dict, Optional, Tuple
 from sqlalchemy import Engine, MetaData, String, Table, Text
 from sqlalchemy.orm import DeclarativeBase
-from doris_alchemy.dialect import HASH, RANDOM, RANGE
+from doris_alchemy.datatype import HASH, RANGE
+from doris_alchemy.datatype import RANDOM
 
 
 METADATA = MetaData()
