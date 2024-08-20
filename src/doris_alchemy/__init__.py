@@ -19,8 +19,7 @@
 from sqlalchemy.dialects import registry
 
 from doris_alchemy.datatype import HASH, RANGE, RANDOM
-from doris_alchemy.orm_base import DorisBase
-from doris_alchemy.orm_base_mixin import DorisBaseMixin
+from doris_alchemy.orm_base import DorisBase, DorisBaseMixin
 
 registry.register("doris", "doris_alchemy.dialect", "DorisDialect")
 registry.register("doris.pymysql", "doris_alchemy.dialect", "DorisDialect_pymysql")
