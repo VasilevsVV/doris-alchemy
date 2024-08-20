@@ -11,6 +11,8 @@ class DorisBaseMixin:
         'doris_properties': {"replication_allocation": "tag.location.default: 1"}
         }
     __tablename__: str
+    
+    metadata: MetaData
 
     doris_distributed_by: HASH|RANDOM
     doris_partition_by: HASH|RANDOM|RANGE
