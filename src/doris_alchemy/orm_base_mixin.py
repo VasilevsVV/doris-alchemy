@@ -9,7 +9,7 @@ from doris_alchemy.orm_base import METADATA
 class DorisBaseMixin:
     metadata = METADATA
     
-    __table_args__:Dict[str, Any]
+    __table_args__:Dict[str, Any]|Tuple
     __table_args__ = {
         'doris_properties': {"replication_allocation": "tag.location.default: 1"}
         }
@@ -28,23 +28,62 @@ class DorisBaseMixin:
     }
     
     
+    @classmethod
+    def __current_table_args(cls) -> dict:
+        if cls.__table_args__ is None:
+            return {}
+        if isinstance(cls.__table_args__, Dict):
+            return cls.__table_args__
+        if isinstance(cls.__table_args__, Tuple):
+            d = cls.__table_args__[-1]
+            if isinstance(d, dict):
+                return d
+            return {}
+        raise Exception(f'{cls.__name__} __table_args__ must be dict or tuple.')
+    
+    
+    @classmethod
+    def __update_table_args(cls, args: dict) -> None:
+        if cls.__table_args__ is None:
+            cls.__table_args__ = args
+        if isinstance(cls.__table_args__, dict):
+            cls.__table_args__.update(args)
+        if isinstance(cls.__table_args__, tuple):
+            d = cls.__table_args__[-1]
+            if isinstance(d, dict):
+                d.update(args)
+                cls.__table_args__ = cls.__table_args__[:-1] + (d,)
+            else:
+                cls.__table_args__ = cls.__table_args__ + (args,)
+    
+    
     def __init_subclass__(cls, **kw: Any) -> None:
+        # Convenient fix for Mapped[str] type annotation
+        # Will automatically map Mapped[str] to Text, instead of String() (which leads to an error)
         cls.type_annotation_map = {
             str: String().with_variant(Text, 'doris')
         }
         
-        if cls.__table_args__ is None:
-            cls.__table_args__ = {}
-        # super_table_args = cls.__base_table_args()
-        # cls.__table_args__.update(super_table_args)
+        # Fixing replication_allocation automatically (if you dont have > 3 backend instances.)
+        current_args = cls.__current_table_args()
+        if 'doris_properties' not in current_args:
+            current_args['doris_properties'] = {"replication_allocation": "tag.location.default: 1"}
+        else:
+            prop = current_args['doris_properties']
+            if 'replication_allocation' not in prop:
+                prop['replication_allocation'] = "tag.location.default: 1"
+                current_args['doris_properties'] = prop
+        
+        # Updating DORIS specific arguments from class attributes.
         if hasattr(cls, 'doris_distributed_by'):
-            cls.__table_args__['doris_distributed_by'] = getattr(cls, 'doris_distributed_by')
+            current_args['doris_distributed_by'] = getattr(cls, 'doris_distributed_by')
         if hasattr(cls, 'doris_partition_by'):
-            cls.__table_args__['doris_partition_by'] = getattr(cls, 'doris_partition_by')
+            current_args['doris_partition_by'] = getattr(cls, 'doris_partition_by')
         if hasattr(cls, 'doris_unique_key'):
-            cls.__table_args__['doris_unique_key'] = getattr(cls, 'doris_unique_key')
+            current_args['doris_unique_key'] = getattr(cls, 'doris_unique_key')
         if hasattr(cls, 'doris_autogen_primary_key') and cls.doris_autogen_primary_key:
-            cls.__table_args__['doris_autogen_primary_key'] = True
+            current_args['doris_autogen_primary_key'] = True
+        cls.__update_table_args(current_args)
             
         super().__init_subclass__()
     
@@ -61,7 +100,8 @@ class DorisBaseMixin:
     @classmethod
     def get_table(cls) -> Optional[Table]:
         tname = cls.__tablename__
-        schema = cls.__table_args__.get('schema')
+        args = cls.__current_table_args()
+        schema = args.get('schema')
         if schema:
             tname = f'{schema}.{tname}'
         __mtd = cls.metadata
