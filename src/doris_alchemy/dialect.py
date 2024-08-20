@@ -18,7 +18,7 @@
 # under the License.
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 from sqlalchemy import Column, Table, log, exc, text
 from sqlalchemy.dialects.mysql.base import MySQLDDLCompiler, MySQLIdentifierPreparer, MySQLDialect
 from sqlalchemy.dialects.mysql import reflection as _reflection
@@ -34,67 +34,12 @@ from sqlalchemy.sql import sqltypes
 from sqlalchemy.schema import CreateTable, SchemaConst
 
 from doris_alchemy.const import TABLE_KEY_OPTIONS, TABLE_PROPERTIES_SORT_TUPLES
-from abc import ABC, abstractmethod
+
+from doris_alchemy.datatype import HASH, RANDOM, RenderedMixin
+from doris_alchemy.util import format_properties, join_args_with_quote
 
 
 logger = logging.getLogger(__name__)
-
-
-def join_args_with_quote(*args):
-    args = [f'`{a}`' for a in args]
-    args_str = ', '.join(args)
-    return '(' + args_str + ')'
-
-
-def format_properties(**kwargs):
-    entries = []
-    for k, v in kwargs.items():
-        entry = f'"{k}" = "{v}",'
-        entries.append(entry)
-    result_str = '\n    '.join(entries)
-    return '(\n    ' + result_str[:-1] + '\n)'
-
-
-class RenderedMixin(ABC):
-    @abstractmethod
-    def render(self) -> str:
-        pass
-    
-
-class HASH(RenderedMixin):
-    def __init__(self, *keys: str, buckets='auto'):
-        self.keys = keys
-        self.buckets = buckets
-
-    def render(self) -> str:
-        keys_str = 'HASH' + join_args_with_quote(*self.keys)
-        buckets_str = f'BUCKETS {self.buckets}'
-        return keys_str + ' ' + buckets_str
-
-
-class RANGE(RenderedMixin):
-    def __init__(self, *keys: str, part_info=tuple()):
-        self.keys = keys
-        self.part_info = part_info
-
-    def render(self) -> str:
-        keys_str = 'RANGE' + join_args_with_quote(*self.keys)
-        if len(self.part_info) > 0:
-            part_str = ',\n    '.join(self.part_info)
-            part_str = '(\n    ' + part_str + '\n)'
-        else:
-            part_str = '()'
-        return keys_str + ' ' + part_str
-
-
-class RANDOM(HASH, RenderedMixin):
-    def __init__(self, *keys: str, buckets='auto'):
-        super().__init__(*keys, buckets=buckets)
-
-    def render(self) -> str:
-        keys_str = 'RANDOM' + join_args_with_quote(*self.keys)
-        buckets_str = f'BUCKETS {self.buckets}'
-        return keys_str + ' ' + buckets_str
 
 
 class DorisDDLCompiler(MySQLDDLCompiler):
@@ -149,15 +94,32 @@ class DorisDDLCompiler(MySQLDDLCompiler):
 
 
 
+    def __compile_table_arg(self, option: str, arg: Any, table_name: str) -> Optional[str]:
+        option = option.replace("_", " ")
+        # if option in _reflection._options_of_type_string:
+        if option == 'COMMENT':
+            arg = self.sql_compiler.render_literal_value(arg, sqltypes.String())
+            return f'{option} {arg}'
+        if option in TABLE_KEY_OPTIONS:
+            if isinstance(arg, str):
+                return '{} {}'.format(option, join_args_with_quote(arg))
+            else:
+                assert isinstance(arg, Sequence)
+                return '{} {}'.format(option, join_args_with_quote(*arg))
+        if option in ['PARTITION BY', 'DISTRIBUTED BY']:
+            assert isinstance(arg, RenderedMixin)
+            return '{} {}'.format(option, arg.render())
+        if option == 'PROPERTIES':
+            assert isinstance(arg, dict)
+            return '{} {}'.format(option, format_properties(**arg))
+        if option == 'ENGINE':
+            assert isinstance(arg, str)
+            return f'{option} {arg}'
+        return None
+
+
     def post_create_table(self, table: Table):
-        """Builds top level CREATE TABLE options, like ENGINE and COLLATE.
-
-        Args:
-            table (Table): sqlalchemy.Table
-
-        Returns:
-            sqlalchemy.LiteralString: String literal containing CREATE TABLE query options.
-        """
+        "Builds top level CREATE TABLE options, like ENGINE and COLLATE."
 
         table_opts = []
         opts = {}
@@ -166,39 +128,21 @@ class DorisDDLCompiler(MySQLDDLCompiler):
                 opts[k[len(self.dialect.name) + 1:].upper()] = v
         if table.comment is not None:
             opts["COMMENT"] = table.comment
+        pk = table.primary_key
+        if opts.get('AUTOGEN_PRIMARY_KEY', False) and len(pk) > 0:
+            pk_key = tuple(c.name for c in pk)
+            if 'UNIQUE_KEY' not in opts:
+                opts['UNIQUE_KEY'] = pk_key
+            if 'DISTRIBUTED_BY' not in opts:
+                opts['DISTRIBUTED_BY'] = HASH(pk_key)
+                
+            
         sorted_opts = topological.sort(TABLE_PROPERTIES_SORT_TUPLES, opts)
         for opt in sorted_opts:
-            arg = opts[opt]
-            if opt in _reflection._options_of_type_string:
-                arg = self.sql_compiler.render_literal_value(
-                    arg, sqltypes.String()
-                )
-
-            opt = opt.replace("_", " ")
-
-            if opt in TABLE_KEY_OPTIONS:
-                if isinstance(arg, str):
-                    arg = join_args_with_quote(arg)
-                else:
-                    assert isinstance(arg, tuple)
-                    arg = join_args_with_quote(*arg)
-
-            if opt == "PARTITION BY":
-                assert isinstance(arg, RenderedMixin)
-                arg = arg.render()
-
-            if opt == 'DISTRIBUTED BY':
-                assert isinstance(arg, HASH|RANDOM)
-                arg = arg.render()
-
-            if opt == 'PROPERTIES':
-                assert isinstance(arg, dict)
-                arg = format_properties(**arg)
-
-            joiner = " "
-            table_opts.append(joiner.join((opt, arg)))
-
-
+            __arg = opts[opt]
+            __compiled = self.__compile_table_arg(opt, __arg, table.name)
+            if __compiled:
+                table_opts.append(__compiled)
         return "\n".join(table_opts)
     
     def visit_create_column(self, create, first_pk=False, **kw):
