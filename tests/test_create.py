@@ -5,7 +5,8 @@ import sqlalchemy as sa
 from sqlalchemy import create_engine
 
 from doris_alchemy import datatype
-from doris_alchemy import HASH, RANGE
+from doris_alchemy.datatype import RANGE
+from doris_alchemy.datatype import HASH
 
 
 @pytest.fixture
