@@ -13,6 +13,10 @@ class DorisBaseMixin:
     __tablename__: str
     
     metadata: MetaData
+    
+    type_annotation_map = {
+        str: String().with_variant(Text, 'doris')
+    }
 
     doris_distributed_by: HASH|RANDOM
     doris_partition_by: HASH|RANDOM|RANGE
@@ -21,10 +25,6 @@ class DorisBaseMixin:
     doris_unique_key: str|Sequence[str]
     doris_duplicate_key: str|Sequence[str]
     doris_aggregate_key: str|Sequence[str]
-
-    type_annotation_map = {
-        str: String().with_variant(Text, 'doris')
-    }
 
 
     @classmethod
@@ -59,9 +59,6 @@ class DorisBaseMixin:
     def __init_subclass__(cls, **kw: Any) -> None:
         # Convenient fix for Mapped[str] type annotation
         # Will automatically map Mapped[str] to Text, instead of String() (which leads to an error)
-        cls.type_annotation_map = {
-            str: String().with_variant(Text, 'doris')
-        }
 
         # Fixing replication_allocation automatically (if you dont have > 3 backend instances.)
         current_args = cls.__current_table_args()
